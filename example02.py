@@ -10,7 +10,7 @@ from flowtorch.analysis import DMD, OptDMD
 mpl.rcParams['figure.dpi'] = 160
 
 # path to the dataset
-path = "/Users/robert/WORK/THB/Forschung/optDMD/datasets_minimal/of_cylinder2D_binary"
+path = "datasets_minimal/of_cylinder2D_binary"
 loader = FOAMDataloader(path)
 times = loader.write_times
 window_times = [time for time in times if float(time) >= 4.0]
