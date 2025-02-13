@@ -9,8 +9,8 @@ from flowtorch.analysis import SVD
 # increase resolution of plots
 mpl.rcParams['figure.dpi'] = 160
 
-# path to the dataset
-path = "/Users/robert/WORK/THB/Forschung/optDMD/datasets_minimal/of_cylinder2D_binary"
+# path to the dataset relative to the current working directory
+path = "datasets_minimal/of_cylinder2D_binary"
 
 loader = FOAMDataloader(path)
 times = loader.write_times
