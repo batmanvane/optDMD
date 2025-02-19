@@ -28,8 +28,8 @@ every = 4 # use only every 4th vertex
 fig, ax = plt.subplots()
 ax.scatter(vertices[::every, 0], vertices[::every, 1], s=0.5, c=mask[::every])
 ax.set_aspect("equal", 'box')
-ax.set_xlim(0.0, 2.2)
-ax.set_ylim(0.0, 0.41)
+#ax.set_xlim(0.0, 2.2)
+#ax.set_ylim(0.0, 0.41)
 plt.show()
 
 # load the vorticity field at times >= 4.0
@@ -46,6 +46,43 @@ data_matrix -= pt.mean(data_matrix, dim=1).unsqueeze(-1)
 
 svd = SVD(data_matrix, rank=400)
 print(svd)
+
+def svd_full_size(data_matrix):
+    m, n = data_matrix.shape
+    r = min(m, n)  # Rank for full SVD
+
+    # Storage in bytes:
+    # U: m x m (complex64 -> 8 bytes per element)
+    size_U = m * m * 8
+    # Sigma: r x r (float32 -> 4 bytes per element)
+    size_S = r * r * 4
+    # Vh: r x n (complex64 -> 8 bytes per element)
+    size_Vh = r * n * 8
+
+    total_size_bytes = size_U + size_S + size_Vh
+    total_size_mb = total_size_bytes / (1024 ** 2)  # Convert to MB
+
+    return total_size_mb
+
+# Example usage
+full_svd_size_mb = svd_full_size(data_matrix)
+print(f"Estimated size of full SVD: {full_svd_size_mb:.4f} MB")
+
+
+truncated_svd_size_mb=svd.required_memory/ (1024 ** 2) # Convert to MB
+
+def compression_rate(full_size, truncated_size):
+    """Compute compression rate and compression ratio."""
+    rate = truncated_size / full_size  # Compression rate (lower is better)
+    ratio = full_size / truncated_size  # Compression ratio (higher is better)
+    return rate, ratio
+
+rate, ratio = compression_rate(full_svd_size_mb, truncated_svd_size_mb)
+
+print(f"Full SVD Size: {full_svd_size_mb:.4f} MB")
+print(f"Truncated SVD Size: {truncated_svd_size_mb:.4f} MB")
+print(f"Compression Rate: {rate:.4f} (lower is better)")
+print(f"Compression Ratio: {ratio:.2f}x (higher is better)")
 
 s = svd.s
 s_sum = s.sum().item()
