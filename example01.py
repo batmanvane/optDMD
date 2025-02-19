@@ -128,7 +128,7 @@ print(f"mean squared error: {mse:.3f}")
 
 
 #plot compression rate vs mse via screening the rank from 1 to 50
-ranks = range(1, 51)
+ranks = range(1, 41)
 errors = []
 compression_rates = []
 compression_ratio = []
@@ -162,11 +162,13 @@ ax1.set_xlabel("Compression Ratio")
 ax1.set_ylabel("Mean Squared Error", color="C0")
 ax1.tick_params(axis='y', labelcolor="C0")
 ax1.set_yscale("log")  # Log scale for better visualization
+ax1.set_xscale("log")  # Log scale for better visualization
 ax1.grid()
 ax1.set_title("Compression Ratio & Rank vs Mean Squared Error")
 
 # Create a twin x-axis for Rank
 ax2 = ax1.twiny()
+ax2.set_xscale("log")  # Log scale for better visualization
 ax2.set_xlim(ax1.get_xlim())  # Ensure both x-axes are aligned
 ax2.set_xticks(compression_ratio)  # Set compression ratio positions
 ax2.set_xticklabels([str(r) for r in ranks])  # Display ranks as labels
