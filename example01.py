@@ -81,6 +81,21 @@ def svd_full_size(data_matrix):
     total_size_mb = total_size_bytes / (1024 ** 2)  # Convert to MB
 
     return total_size_mb
+def svd_truncated_size(data_matrix, rank):
+    m, n = data_matrix.shape
+
+    # Storage in bytes:
+    # U: m x rank (complex64 -> 8 bytes per element)
+    size_U = m * rank * 8
+    # Sigma: rank x rank (float32 -> 4 bytes per element)
+    size_S = rank * rank * 4
+    # Vh: rank x n (complex64 -> 8 bytes per element)
+    size_Vh = rank * n * 8
+
+    total_size_bytes = size_U + size_S + size_Vh
+    total_size_mb = total_size_bytes / (1024 ** 2)  # Convert to MB
+
+    return total_size_mb
 
 # Example usage
 full_svd_size_mb = svd_full_size(data_matrix)
@@ -101,6 +116,67 @@ print(f"Full SVD Size: {full_svd_size_mb:.4f} MB")
 print(f"Truncated SVD Size: {truncated_svd_size_mb:.4f} MB")
 print(f"Compression Rate: {rate:.4f} (lower is better)")
 print(f"Compression Ratio: {ratio:.2f}x (higher is better)")
+
+
+# reconstruct the field starting from t=4.0
+print(f"Rank: {svd.opt_rank:.0f}")
+reconstructed_data = svd.reconstruct(svd.opt_rank)
+
+# calculate the mean squared error to assess the quality of the reconstruction
+mse = pt.mean(pt.abs(data_matrix - reconstructed_data) ** 2)
+print(f"mean squared error: {mse:.3f}")
+
+
+#plot compression rate vs mse via screening the rank from 1 to 50
+ranks = range(1, 51)
+errors = []
+compression_rates = []
+compression_ratio = []
+for r in ranks:
+    errors.append(pt.mean(pt.abs(data_matrix - svd.reconstruct(r)) ** 2).item())
+    #calculate size of truncated svd for rank r
+    truncated_svd_size_mb = svd_truncated_size(data_matrix, r)
+    rate, ratio = compression_rate(full_svd_size_mb, truncated_svd_size_mb)
+    compression_ratio.append(ratio)
+    compression_rates.append(rate)
+
+
+fig, ax1 = plt.subplots()
+ax1.plot(ranks, errors, label="mean squared error", color="C0")
+ax1.set_xlabel("rank")
+ax1.set_ylabel("mean squared error")
+ax1.set_title("Compression rate vs mean squared error")
+#ax1.set_yscale("log")
+ax1.grid()
+ax2 = ax1.twinx()
+ax2.plot(ranks, compression_ratio, label="compression ratio", color="C1")
+ax2.set_ylabel("compression ratio")
+#ax2.set_yscale("log")
+plt.show()
+
+fig, ax1 = plt.subplots()
+
+# Plot mean squared error vs. compression ratio (Primary x-axis)
+ax1.plot(compression_ratio, errors, marker="o", linestyle="--", color="C0", label="MSE vs Compression Ratio")
+ax1.set_xlabel("Compression Ratio")
+ax1.set_ylabel("Mean Squared Error", color="C0")
+ax1.tick_params(axis='y', labelcolor="C0")
+ax1.set_yscale("log")  # Log scale for better visualization
+ax1.grid()
+ax1.set_title("Compression Ratio & Rank vs Mean Squared Error")
+
+# Create a twin x-axis for Rank
+ax2 = ax1.twiny()
+ax2.set_xlim(ax1.get_xlim())  # Ensure both x-axes are aligned
+ax2.set_xticks(compression_ratio)  # Set compression ratio positions
+ax2.set_xticklabels([str(r) for r in ranks])  # Display ranks as labels
+ax2.set_xlabel("Rank")
+
+plt.show()
+
+
+
+
 
 s = svd.s
 s_sum = s.sum().item()
