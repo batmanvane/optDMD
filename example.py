@@ -72,7 +72,7 @@ show_as_image(data, X, T)
 plt.show()
 
 # add gaussian noise to the data
-data_noisy = data + pt.normal(2*pt.ones_like(X), 2*pt.ones_like(X))
+data_noisy = data + pt.normal(.02*pt.ones_like(X), 2*pt.ones_like(X))
 show_as_image(data_noisy, X, T)
 plt.show()
 
@@ -98,7 +98,7 @@ plt.show()
 
 # Truncated SVD
 # The first three singular values are used to reconstruct the data.
-rank = 2
+rank = 3
 Ur, sr, Vr = U[:, :rank], s[:rank], VH.conj().T[:, :rank]
 Unr, snr, Vnr = Un[:, :rank], sn[:rank], VHn.conj().T[:, :rank]
 
@@ -187,6 +187,37 @@ print("relative error of DMD modes:")
 for i, e in enumerate(errors):
     print(f"mode {i}: {e.item():.3f}")
 
+# # Ensure phi and phi_pro exist before running computations
+# try:
+#     # Compute norms
+#     phi_norm = pt.norm(phi)
+#     phi_pro_norm = pt.norm(phi_pro)
+#     difference_norm = pt.norm(phi - phi_pro)
+#
+#     # Compute relative errors per mode
+#     relative_error_values = [relative_error(phi[:, i], phi_pro[:, i]).item() for i in range(rank)]
+#
+#     # Store results in dictionary
+#     norms_info = {
+#         "||phi||": phi_norm.item(),
+#         "||phi_pro||": phi_pro_norm.item(),
+#         "||phi - phi_pro||": difference_norm.item(),
+#         "Relative Errors": relative_error_values,
+#     }
+#
+# except NameError as e:
+#     norms_info = {"Error": str(e)}
+#
+# print(norms_info)
+
+# calculate mean squared error on data and reconstructed data
+data_reconstructed = Ur @ pt.diag(sr).type(pt.cfloat) @ Vr.conj().T
+#mse = pt.mean(pt.square(data - data_reconstructed))
+
+#mse = pt.mean(pt.square(data[:, :-1] - data_reconstructed))
+mse = pt.mean(pt.abs(data[:, :-1] - data_reconstructed) ** 2)
+
+print(f"mean squared error: {mse:.3f}")
 
 #def compression_rate(data, Ur, sr, Vr):
 #    return (Ur.size()[0] + sr.size()[0] + Vr.size()[0]) / data.size()[0]
