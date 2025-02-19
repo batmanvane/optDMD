@@ -44,8 +44,26 @@ for i, time in enumerate(window_times):
 # subtract the temporal mean
 data_matrix -= pt.mean(data_matrix, dim=1).unsqueeze(-1)
 
+#flowtorch svd with automatic rank selection --> check criterion
 svd = SVD(data_matrix, rank=400)
 print(svd)
+
+#torch svd with explicit rank selection
+
+def compute_svd_torch(data_matrix, rank):
+    """Compute truncated SVD using PyTorch and return U, S, Vh with specified rank."""
+    U, S, Vh = pt.linalg.svd(data_matrix, full_matrices=False)  # Faster economy SVD
+    return U[:, :rank], S[:rank], Vh[:rank, :]
+
+#rank = svd.opt_rank
+rank_pt = 41
+U_trunc, S_trunc, Vh_trunc = compute_svd_torch(data_matrix, rank_pt)
+
+# Compute memory usage
+truncated_svd_pt_size_mb = (U_trunc.numel() * 4 + S_trunc.numel() * 4 + Vh_trunc.numel() * 4) / (1024**2)
+print(f"Truncated SVD Size (PyTorch): {truncated_svd_pt_size_mb:.4f} MB")
+
+
 
 def svd_full_size(data_matrix):
     m, n = data_matrix.shape
