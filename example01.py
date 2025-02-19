@@ -6,6 +6,11 @@ from flowtorch import DATASETS
 from flowtorch.data import FOAMDataloader, mask_box
 from flowtorch.analysis import SVD
 
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import LogFormatterMathtext
+
+
 # increase resolution of plots
 mpl.rcParams['figure.dpi'] = 160
 
@@ -154,27 +159,49 @@ ax2.set_ylabel("compression ratio")
 #ax2.set_yscale("log")
 plt.show()
 
+
 fig, ax1 = plt.subplots()
+
+# Ensure min and max ranks are included
+selected_indices = [i for i, r in enumerate(ranks) if r in {1, 5, 10, 15, 20, 30, 40}]
+selected_indices += [0, len(ranks) - 1]  # Adding the lowest and highest index
+selected_indices = sorted(set(selected_indices))  # Ensure uniqueness and sorting
+
+selected_ranks = [ranks[i] for i in selected_indices]
+selected_compression_ratios = [compression_ratio[i] for i in selected_indices]
+
+# Define reasonable tick positions for Compression Ratio
+x_ticks = np.logspace(np.floor(np.log10(min(compression_ratio))),
+                      np.ceil(np.log10(max(compression_ratio))),
+                      num=3)  # Ensure multiple ticks in log scale
 
 # Plot mean squared error vs. compression ratio (Primary x-axis)
 ax1.plot(compression_ratio, errors, marker="o", linestyle="--", color="C0", label="MSE vs Compression Ratio")
 ax1.set_xlabel("Compression Ratio")
 ax1.set_ylabel("Mean Squared Error", color="C0")
+
+# Apply explicit tick settings AFTER log scale to ensure they appear correctly
+ax1.set_xscale("log")
+ax1.set_yscale("log")
+ax1.set_xticks(x_ticks)  # Set log-spaced x-ticks
+#ax1.get_xaxis().set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1e}"))  # Ensure labels show properly
+ax1.xaxis.set_major_formatter(LogFormatterMathtext())  # **Use 10³ format**
+
 ax1.tick_params(axis='y', labelcolor="C0")
-ax1.set_yscale("log")  # Log scale for better visualization
-ax1.set_xscale("log")  # Log scale for better visualization
-ax1.grid()
+ax1.grid(which="both", linestyle="--", linewidth=0.5)
 ax1.set_title("Compression Ratio & Rank vs Mean Squared Error")
 
 # Create a twin x-axis for Rank
 ax2 = ax1.twiny()
-ax2.set_xscale("log")  # Log scale for better visualization
+ax2.set_xscale("log")
 ax2.set_xlim(ax1.get_xlim())  # Ensure both x-axes are aligned
-ax2.set_xticks(compression_ratio)  # Set compression ratio positions
-ax2.set_xticklabels([str(r) for r in ranks])  # Display ranks as labels
+ax2.set_xticks(selected_compression_ratios)  # Use filtered compression ratios
+ax2.set_xticklabels([str(r) for r in selected_ranks])  # Display selected ranks as labels
 ax2.set_xlabel("Rank")
 
 plt.show()
+
+
 
 
 
