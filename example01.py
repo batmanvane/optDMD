@@ -10,12 +10,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import LogFormatterMathtext
 
+from flowtorch.analysis import DMD, OptDMD
+
 
 # increase resolution of plots
 mpl.rcParams['figure.dpi'] = 160
 
 # path to the dataset relative to the current working directory
-path = "datasets_minimal/of_cylinder2D_binary"
+#path = "datasets_minimal/of_cylinder2D_binary"
+path = "datasets/of_cylinder2D_binary"
 
 loader = FOAMDataloader(path)
 times = loader.write_times
@@ -47,7 +50,7 @@ for i, time in enumerate(window_times):
     data_matrix[:, i] = pt.masked_select(loader.load_snapshot("vorticity", time)[:, 2], mask)
 
 # subtract the temporal mean
-data_matrix -= pt.mean(data_matrix, dim=1).unsqueeze(-1)
+# data_matrix -= pt.mean(data_matrix, dim=1).unsqueeze(-1)
 
 #flowtorch svd with automatic rank selection --> check criterion
 svd = SVD(data_matrix, rank=400)
@@ -68,6 +71,12 @@ U_trunc, S_trunc, Vh_trunc = compute_svd_torch(data_matrix, rank_pt)
 truncated_svd_pt_size_mb = (U_trunc.numel() * 4 + S_trunc.numel() * 4 + Vh_trunc.numel() * 4) / (1024**2)
 print(f"Truncated SVD Size (PyTorch): {truncated_svd_pt_size_mb:.4f} MB")
 
+
+### DMD
+dt = float(window_times[1]) - float(window_times[0])
+#dmd = DMD(data_matrix, dt=dt, rank=svd.rank)
+#dmdopt = OptDMD(data_matrix, dt=dt, rank=svd.opt_rank)
+#print(dmd)
 
 
 def svd_full_size(data_matrix):
@@ -102,7 +111,7 @@ def svd_truncated_size(data_matrix, rank):
 
     return total_size_mb
 
-# Example usage
+# Print estimated size of full SVD
 full_svd_size_mb = svd_full_size(data_matrix)
 print(f"Estimated size of full SVD: {full_svd_size_mb:.4f} MB")
 
@@ -133,39 +142,90 @@ print(f"mean squared error: {mse:.3f}")
 
 
 #plot compression rate vs mse via screening the rank from 1 to 50
-ranks = range(1, 41)
+ranks = range(1, svd.rank+1)
 errors = []
+errors_DMD = []
 compression_rates = []
 compression_ratio = []
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import LogFormatterMathtext
+from matplotlib.animation import FuncAnimation
+from matplotlib import cm
+
+# Compute errors and compression metrics
+ranks = list(range(1, svd.rank + 1))
+errors = []
+errors_DMD = []
+errors_OptDMD = []
+compression_rates = []
+compression_ratio = []
+
 for r in ranks:
-    errors.append(pt.mean(pt.abs(data_matrix - svd.reconstruct(r)) ** 2).item())
-    #calculate size of truncated svd for rank r
+    # Compute Mean Squared Error (MSE) for SVD
+    #errors.append(pt.mean(pt.abs(data_matrix - svd.reconstruct(r)) ** 2).item())
+
+    try:
+        reconstructed_svd = SVD(data_matrix, rank=r)
+        mse_svd = pt.linalg.norm(data_matrix - reconstructed_svd.reconstruct(r), dim=0)
+        errors.append(mse_svd.mean().item())
+    except Exception as e:
+        print(f"Warning: SVD reconstruction failed for rank {r} with error: {e}")
+        errors.append(np.nan)
+
+
+    # Compute Mean Squared Error (MSE) for DMD
+    try:
+       # reconstructed_dmd = dmd.partial_reconstruction(set(range(1, r + 1)))
+        reconstructed_dmd = DMD(data_matrix, dt=dt, rank=r)
+        mse_dmd = pt.linalg.norm(data_matrix - reconstructed_dmd.reconstruction, dim=0)
+#        mse_dmd = pt.mean(pt.abs(data_matrix - reconstructed_dmd.reconstruction) ** 2)
+        errors_DMD.append(mse_dmd.mean().item())
+
+ #       errors_DMD.append(reconstructed_dmd.reconstruction_error.mean().item())
+    except Exception as e:
+        print(f"Warning: DMD reconstruction failed for rank {r} with error: {e}")
+        errors_DMD.append(np.nan)  # Assign NaN if DMD reconstruction fails
+
+    # Compute Mean Squared Error (MSE) for OPTDMD
+    try:
+        reconstructed_optdmd = OptDMD(data_matrix, dt=dt, rank=r)
+        mse_optdmd = pt.linalg.norm(data_matrix - reconstructed_optdmd.reconstruction, dim=0)
+        errors_OptDMD.append(mse_optdmd.mean().item())
+    except Exception as e:
+        print(f"Warning: OPTDMD reconstruction failed for rank {r} with error: {e}")
+        errors_OptDMD.append(np.nan)
+
+
+    # Calculate size of truncated SVD for rank r
     truncated_svd_size_mb = svd_truncated_size(data_matrix, r)
     rate, ratio = compression_rate(full_svd_size_mb, truncated_svd_size_mb)
     compression_ratio.append(ratio)
     compression_rates.append(rate)
 
-
+# ** Plot Rank vs. MSE (SVD vs. DMD) and Compression Ratio **
 fig, ax1 = plt.subplots()
-ax1.plot(ranks, errors, label="mean squared error", color="C0")
-ax1.set_xlabel("rank")
-ax1.set_ylabel("mean squared error")
-ax1.set_title("Compression rate vs mean squared error")
-#ax1.set_yscale("log")
+
+ax1.plot(ranks, errors, label="MSE (SVD)", color="C0", linestyle="--")
+ax1.plot(ranks, errors_DMD, label="MSE (DMD)", color="C2", linestyle=":")
+ax1.plot(ranks, errors_OptDMD, label="MSE (OptDMD)", color="C3", linestyle="-.")
+ax1.set_xlabel("Rank")
+ax1.set_ylabel("Mean Squared Error")
+ax1.set_title("Compression Rate vs Mean Squared Error")
 ax1.grid()
+ax1.legend()
+
+# Twin axis for compression ratio
 ax2 = ax1.twinx()
-ax2.plot(ranks, compression_ratio, label="compression ratio", color="C1")
-ax2.set_ylabel("compression ratio")
-#ax2.set_yscale("log")
+ax2.plot(ranks, compression_ratio, label="Compression Ratio", color="C1")
+ax2.set_ylabel("Compression Ratio")
+
 plt.show()
 
-
-fig, ax1 = plt.subplots()
-
-# Ensure min and max ranks are included
-selected_indices = [i for i, r in enumerate(ranks) if r in {1, 5, 10, 15, 20, 30, 40}]
-selected_indices += [0, len(ranks) - 1]  # Adding the lowest and highest index
-selected_indices = sorted(set(selected_indices))  # Ensure uniqueness and sorting
+# ** Plot MSE vs. Compression Ratio (SVD vs. DMD) **
+selected_indices = [i for i, r in enumerate(ranks) if r in {1, 5, 10, 15, 20, 30}]
+selected_indices += [0, len(ranks) - 1]  # Ensure lowest and highest ranks are included
+selected_indices = sorted(set(selected_indices))
 
 selected_ranks = [ranks[i] for i in selected_indices]
 selected_compression_ratios = [compression_ratio[i] for i in selected_indices]
@@ -173,92 +233,87 @@ selected_compression_ratios = [compression_ratio[i] for i in selected_indices]
 # Define reasonable tick positions for Compression Ratio
 x_ticks = np.logspace(np.floor(np.log10(min(compression_ratio))),
                       np.ceil(np.log10(max(compression_ratio))),
-                      num=3)  # Ensure multiple ticks in log scale
+                      num=5)  # Ensure multiple ticks in log scale
 
-# Plot mean squared error vs. compression ratio (Primary x-axis)
-ax1.plot(compression_ratio, errors, marker="o", linestyle="--", color="C0", label="MSE vs Compression Ratio")
+fig, ax1 = plt.subplots()
+
+# Plot Mean Squared Error vs. Compression Ratio
+ax1.plot(compression_ratio, errors, marker="o", linestyle="--", color="C0", label="MSE (SVD)")
+ax1.plot(compression_ratio, errors_DMD, marker="s", linestyle=":", color="C2", label="MSE (DMD)")
+ax1.plot(compression_ratio, errors_OptDMD, marker="s", linestyle="-.", color="C3", label="MSE (OptDMD)")
 ax1.set_xlabel("Compression Ratio")
-ax1.set_ylabel("Mean Squared Error", color="C0")
+ax1.set_ylabel("Mean Squared Error")
 
-# Apply explicit tick settings AFTER log scale to ensure they appear correctly
+# Apply explicit tick settings
 ax1.set_xscale("log")
 ax1.set_yscale("log")
-ax1.set_xticks(x_ticks)  # Set log-spaced x-ticks
-#ax1.get_xaxis().set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1e}"))  # Ensure labels show properly
-ax1.xaxis.set_major_formatter(LogFormatterMathtext())  # **Use 10³ format**
+ax1.set_xticks(x_ticks)
+ax1.xaxis.set_major_formatter(LogFormatterMathtext())  # Use 10³ format
 
 ax1.tick_params(axis='y', labelcolor="C0")
 ax1.grid(which="both", linestyle="--", linewidth=0.5)
 ax1.set_title("Compression Ratio & Rank vs Mean Squared Error")
+ax1.legend()
 
 # Create a twin x-axis for Rank
 ax2 = ax1.twiny()
 ax2.set_xscale("log")
 ax2.set_xlim(ax1.get_xlim())  # Ensure both x-axes are aligned
-ax2.set_xticks(selected_compression_ratios)  # Use filtered compression ratios
-ax2.set_xticklabels([str(r) for r in selected_ranks])  # Display selected ranks as labels
+ax2.set_xticks(selected_compression_ratios)
+ax2.set_xticklabels([str(r) for r in selected_ranks])
 ax2.set_xlabel("Rank")
 
 plt.show()
 
 
+# ** Create Animated GIFs for SVD and DMD Reconstructions **
+def create_animation(rank, filename, method):
+    """ Create and save the animation for SVD or DMD """
+    reconstruction = svd.reconstruct(rank) if method == "SVD" else dmd.reconstruct(rank)
+
+    # Find the start index corresponding to 4s
+    start_index = next(i for i, t in enumerate(window_times) if t >= 4)
+
+    # Trim the reconstruction and time arrays
+    reconstruction = reconstruction[:, start_index:]
+    times = window_times[start_index:]
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.set_aspect("equal", 'box')
+    ax.set_xlabel(r"$x$")
+    ax.set_ylabel(r"$y$")
+
+    cmap = cm.get_cmap("jet")
+    vmin, vmax = reconstruction.min().item(), reconstruction.max().item()
+
+    # Initial plot
+    sc = ax.tricontourf(x, y, reconstruction[:, 0], levels=15, cmap=cmap, vmin=vmin, vmax=vmax)
+    ax.tricontour(x, y, reconstruction[:, 0], levels=15, linewidths=0.1, colors='k')
+    ax.add_patch(plt.Circle((0.2, 0.2), 0.05, color='k'))
+
+    def update(i):
+        """ Update function for the animation """
+        for coll in ax.collections:
+            coll.remove()
+        sc = ax.tricontourf(x, y, reconstruction[:, i], levels=15, cmap=cmap, vmin=vmin, vmax=vmax)
+        ax.tricontour(x, y, reconstruction[:, i], levels=15, linewidths=0.1, colors='k')
+        ax.set_title(f"t={times[i]:.1f}s ({method} Rank={rank})")
+        return sc
+
+    ani = FuncAnimation(fig, update, frames=len(times), interval=100)
+
+    # Save the animation as a GIF
+    ani.save(filename, writer="pillow", fps=10)
+    plt.close(fig)
 
 
+# Generate GIFs for SVD and DMD at three ranks
+for method in ["SVD", "DMD"]:
+    create_animation(svd.rank, f"reconstruction_{method}_rank.gif", method)
+    create_animation(svd.opt_rank, f"reconstruction_{method}_opt_rank.gif", method)
+    create_animation(3, f"reconstruction_{method}_3.gif", method)
 
-
-
-s = svd.s
-s_sum = s.sum().item()
-# relative contribution
-s_rel = [s_i / s_sum * 100 for s_i in s]
-# cumulative contribution
-s_cum = [s[:n].sum().item() / s_sum * 100 for n in range(s.shape[0])]
-# find out how many singular values we need to reach at least 99 percent
-i_99 = bisect.bisect_right(s_cum, 99)
-
-fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
-ax1.bar(range(s.shape[0]), s_rel, align="edge")
-ax2.plot(range(s.shape[0]), s_cum)
-ax2.set_xlim(0, 90)
-ax2.set_ylim(0, 105)
-ax1.set_title("individual contribution in %")
-ax2.set_title("cumulative contribution in %")
-ax2.plot([0, i_99, i_99], [s_cum[i_99], s_cum[i_99], 0], ls="--", color="C3")
-ax2.text(i_99+1, 45, "first {:d} singular values yield {:1.2f}%".format(i_99, s_cum[i_99]))
-plt.show()
-
-
-
-x = pt.masked_select(vertices[:, 0], mask)
-y = pt.masked_select(vertices[:, 1], mask)
-
-fig, axarr = plt.subplots(2, 2, sharex=True, sharey=True)
-count = 0
-for row in range(2):
-    for col in range(2):
-        axarr[row, col].tricontourf(x, y, svd.U[:, count], levels=14, cmap="jet")
-        axarr[row, col].tricontour(x, y, svd.U[:, count], levels=14, linewidths=0.5, colors='k')
-        axarr[row, col].add_patch(plt.Circle((0.2, 0.2), 0.05, color='k'))
-        axarr[row, col].set_aspect("equal", 'box')
-        # add 1 for the POD mode number since we subtracted the mean
-        axarr[row, col].set_title(f"mode {count + 1}")
-        count += 1
-plt.show()
-
-times_num = [float(time) for time in window_times]
-
-fig, axarr = plt.subplots(2, 2, sharex=True, sharey=True)
-count = 0
-for row in range(2):
-    for col in range(2):
-        axarr[row, col].plot(times_num, svd.V[:, count]*svd.s[count], lw=1, label=f"coeff. mode {i+1}")
-        axarr[row, col].set_xlim(min(times_num), max(times_num))
-        axarr[row, col].grid()
-        # add 1 for the POD mode number since we subtracted the mean
-        axarr[row, col].set_title(f"mode coeff. {count + 1}")
-        count += 1
-for ax in axarr[1, :]:
-    ax.set_xlabel(r"$t$ in $s$")
-plt.show()
-
-# plot the reconstructed field at t=4.0, 4,2, 4.4, 4.6
+print(
+    "GIFs saved for SVD and DMD: reconstruction_SVD_rank.gif, reconstruction_SVD_opt_rank.gif, reconstruction_SVD_3.gif")
+print(
+    "GIFs saved for SVD and DMD: reconstruction_DMD_rank.gif, reconstruction_DMD_opt_rank.gif, reconstruction_DMD_3.gif")
